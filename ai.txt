@@ -1,0 +1,26 @@
+Nov 10 11:30pm:
+Summary of work completed:
+
+1.  **Project Setup & Management:**
+    *   Created `manage.sh` script to start/stop frontend and backend servers, managing their PIDs.
+    *   Ensured backend starts on port 8080 and frontend uses proxy for API calls.
+    *   Initialized a new Git repository for the entire project, including `.gitignore`, initial commit, and instructions for remote push.
+
+2.  **Frontend Development (React):**
+    *   Implemented a robust authentication system using `AuthContext` and `ProtectedRoute` to manage user sessions and protect routes.
+    *   Refactored `LoginPage.js`, `Navbar.js`, `ManageTransactionsPage.js`, and `PromotionsPage.js` to integrate with `AuthContext`.
+    *   Fixed runtime errors in `ManageTransactionsPage.js` and `PromotionsPage.js` related to API response handling.
+    *   Overhauled `Navbar.js` to feature a modern, multi-level hierarchical menu, explicitly divided by user role (Regular, Cashier, Admin menus).
+    *   Ensured Bootstrap JavaScript is correctly loaded in `index.js` for interactive components.
+
+3.  **Backend Development (Node.js/Prisma):**
+    *   Resolved `JWT_SECRET` missing error by creating a `.env` file with a generated secret.
+    *   Developed a comprehensive database seeding script (`backend/prisma/seed.js`) using `@faker-js/faker`.
+    *   The seed script populates the database with:
+        *   Random users of various roles.
+        *   A specific `adam` superuser (password: `1234`).
+        *   A specific `suspicious_cashier` user (password: `password123`).
+        *   Random promotions and events.
+        *   A large number of randomized transactions, including 10-20 suspicious transactions created by the `suspicious_cashier`.
+    *   Added `npm run seed` command to `backend/package.json`.
+    *   Fixed API usage and missing field errors in `seed.js`.

@@ -9,7 +9,8 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const validateToken = async () => {
+    const loadUser = async () => {
+      setLoading(true);
       const storedToken = localStorage.getItem('token');
       const expiresAt = localStorage.getItem('tokenExpiresAt');
 
@@ -22,12 +23,14 @@ export const AuthProvider = ({ children }) => {
           console.error("Session expired or token invalid.", error);
           logout();
         }
+      } else {
+        logout();
       }
       setLoading(false);
     };
 
-    validateToken();
-  }, []);
+    loadUser();
+  }, [token]);
 
   const login = (newToken, expiresAt) => {
     localStorage.setItem('token', newToken);

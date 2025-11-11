@@ -39,6 +39,7 @@ stop() {
     if [ -f "$BACKEND_PID_FILE" ]; then
         BACKEND_PID=$(cat "$BACKEND_PID_FILE")
         echo "Stopping backend server (PID: $BACKEND_PID)..."
+        # Use kill -9 for a more forceful stop if a simple kill doesn't work
         kill $BACKEND_PID
         rm "$BACKEND_PID_FILE"
         echo "Backend server stopped."
@@ -48,7 +49,7 @@ stop() {
 
     if [ -f "$FRONTEND_PID_FILE" ]; then
         FRONTEND_PID=$(cat "$FRONTEND_PID_FILE")
-        echo "Stopping frontend server and its child processes (Parent PID: $FRONTEND_PID)..."
+        echo "Stopping frontend server and its children (Parent PID: $FRONTEND_PID)..."
         # Use pkill -P to kill all child processes of the npm start script
         pkill -P $FRONTEND_PID
         # Kill the parent npm start process itself
@@ -60,6 +61,24 @@ stop() {
     fi
 }
 
+restart() {
+    echo "Restarting servers..."
+    stop
+    start
+    echo "Servers restarted."
+}
+
+reseed() {
+    echo "Reseeding database and restarting servers..."
+    stop
+    echo "Running seed script..."
+    cd "$SCRIPT_DIR/backend"
+    npm run seed
+    cd "$SCRIPT_DIR"
+    start
+    echo "Database reseeded and servers restarted."
+}
+
 case "$1" in
     start)
         start
@@ -67,8 +86,14 @@ case "$1" in
     stop)
         stop
         ;;
+    restart)
+        restart
+        ;;
+    reseed)
+        reseed
+        ;;
     *)
-        echo "Usage: $0 {start|stop}"
+        echo "Usage: $0 {start|stop|restart|reseed}"
         exit 1
 esac
 

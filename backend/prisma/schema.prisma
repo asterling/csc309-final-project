@@ -43,6 +43,7 @@ model Transaction {
   suspicious    Boolean  @default(false)
   processedBy   String?
   redeemed      Int?
+  createdAt     DateTime @default(now()) // Added createdAt field
   user          User     @relation(fields: [utorid], references: [utorid])
 }
 

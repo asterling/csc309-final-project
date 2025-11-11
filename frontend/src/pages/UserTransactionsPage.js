@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchUserTransactions } from '../api';
+import { AuthContext } from '../context/AuthContext';
+import useDebounce from '../hooks/useDebounce'; // Import the debounce hook
 
 function UserTransactionsPage() {
   const [transactions, setTransactions] = useState([]);
@@ -9,33 +11,40 @@ function UserTransactionsPage() {
   const [page, setPage] = useState(1);
   const [limit] = useState(10); // Items per page
   const [totalCount, setTotalCount] = useState(0);
-  const [filters, setFilters] = useState({ type: '', createdBy: '', suspicious: '' });
+  // Use a local state for immediate input updates
+  const [localFilters, setLocalFilters] = useState({ type: '', createdBy: '', suspicious: '' });
+  // Debounce the filters for API calls
+  const debouncedFilters = useDebounce(localFilters, 500); // 500ms debounce delay
+
+  const { token, user } = useContext(AuthContext);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const getTransactions = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/login');
-        return;
-      }
+    if (!token || !user) {
+      setLoading(false);
+      return;
+    }
 
+    const getTransactions = async () => {
       try {
-        const data = await fetchUserTransactions(token, page, limit, filters);
+        setLoading(true);
+        const data = await fetchUserTransactions(token, page, limit, debouncedFilters); // Use debounced filters
         setTransactions(data.results);
         setTotalCount(data.count);
       } catch (err) {
         setError(err.message || 'Failed to fetch transactions');
-        localStorage.removeItem('token');
-        localStorage.removeItem('tokenExpiresAt');
-        navigate('/login');
       } finally {
         setLoading(false);
       }
     };
 
     getTransactions();
-  }, [navigate, page, limit, filters]);
+  }, [token, user, navigate, page, limit, debouncedFilters]); // Depend on debounced filters
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedFilters]);
 
   const totalPages = Math.ceil(totalCount / limit);
 
@@ -49,8 +58,8 @@ function UserTransactionsPage() {
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    setFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
-    setPage(1); // Reset to first page on filter change
+    setLocalFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
+    // setPage(1) is now handled by a separate useEffect when debouncedFilters change
   };
 
   const getTransactionCardClass = (type) => {
@@ -67,10 +76,6 @@ function UserTransactionsPage() {
         return '';
     }
   };
-
-  if (loading) {
-    return <div className="container mt-5">Loading transactions...</div>;
-  }
 
   if (error) {
     return <div className="container mt-5 alert alert-danger">{error}</div>;
@@ -90,7 +95,7 @@ function UserTransactionsPage() {
                 id="typeFilter"
                 name="type"
                 className="form-select"
-                value={filters.type}
+                value={localFilters.type}
                 onChange={handleFilterChange}
               >
                 <option value="">All</option>
@@ -106,7 +111,7 @@ function UserTransactionsPage() {
                 id="suspiciousFilter"
                 name="suspicious"
                 className="form-select"
-                value={filters.suspicious}
+                value={localFilters.suspicious}
                 onChange={handleFilterChange}
               >
                 <option value="">All</option>
@@ -119,7 +124,14 @@ function UserTransactionsPage() {
         </div>
       </div>
 
-      {transactions.length === 0 ? (
+      {loading ? (
+        <div className="text-center mt-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p>Loading transactions...</p>
+        </div>
+      ) : transactions.length === 0 ? (
         <div className="alert alert-info text-center">No transactions found.</div>
       ) : (
         <>

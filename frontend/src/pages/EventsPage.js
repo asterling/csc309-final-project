@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { fetchEvents } from '../api';
+import { AuthContext } from '../context/AuthContext';
 
 function EventsPage() {
   const [events, setEvents] = useState([]);
@@ -10,31 +11,30 @@ function EventsPage() {
   const [limit] = useState(10); // Items per page
   const [totalCount, setTotalCount] = useState(0);
   const navigate = useNavigate();
+  const { token } = useContext(AuthContext); // Use token from AuthContext
 
   useEffect(() => {
-    const getEvents = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/login');
-        return;
-      }
+    if (!token) {
+      setLoading(false);
+      return;
+    }
 
+    const getEvents = async () => {
       try {
+        setLoading(true);
         const data = await fetchEvents(token, page, limit);
         setEvents(data.results);
         setTotalCount(data.count);
       } catch (err) {
         setError(err.message || 'Failed to fetch events');
-        localStorage.removeItem('token');
-        localStorage.removeItem('tokenExpiresAt');
-        navigate('/login');
+        // No need to clear token or navigate to login here, AuthContext handles it
       } finally {
         setLoading(false);
       }
     };
 
     getEvents();
-  }, [navigate, page, limit]);
+  }, [token, navigate, page, limit]); // Depend on token from context
 
   const totalPages = Math.ceil(totalCount / limit);
 
@@ -46,10 +46,6 @@ function EventsPage() {
     setPage((prevPage) => Math.min(prevPage + 1, totalPages));
   };
 
-  if (loading) {
-    return <div className="container mt-5">Loading events...</div>;
-  }
-
   if (error) {
     return <div className="container mt-5 alert alert-danger">{error}</div>;
   }
@@ -57,7 +53,14 @@ function EventsPage() {
   return (
     <div className="container mt-5">
       <h1 className="mb-4 text-center">Available Events</h1>
-      {events.length === 0 ? (
+      {loading ? (
+        <div className="text-center mt-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p>Loading events...</p>
+        </div>
+      ) : events.length === 0 ? (
         <div className="alert alert-info text-center">No events available at the moment.</div>
       ) : (
         <>

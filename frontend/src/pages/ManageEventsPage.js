@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { fetchEvents, fetchUserProfile } from '../api';
+import { fetchEvents } from '../api';
+import { AuthContext } from '../context/AuthContext';
+import useDebounce from '../hooks/useDebounce'; // Import the debounce hook
 
 function ManageEventsPage() {
   const [events, setEvents] = useState([]);
@@ -9,38 +11,51 @@ function ManageEventsPage() {
   const [page, setPage] = useState(1);
   const [limit] = useState(10); // Items per page
   const [totalCount, setTotalCount] = useState(0);
-  const [filters, setFilters] = useState({ name: '', location: '', started: '', ended: '', published: '' });
-  const [currentUserRole, setCurrentUserRole] = useState(null);
-  const [loadingUserRole, setLoadingUserRole] = useState(true);
+  // Use a local state for immediate input updates
+  const [localFilters, setLocalFilters] = useState({ name: '', location: '', started: '', ended: '', published: '' });
+  // Debounce the filters for API calls
+  const debouncedFilters = useDebounce(localFilters, 500); // 500ms debounce delay
+
+  const { token, user } = useContext(AuthContext);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const checkUserRoleAndFetchEvents = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/login');
-        return;
-      }
-      try {
-        const user = await fetchUserProfile(token);
-        setCurrentUserRole(user.role);
+    if (!token || !user) {
+      setLoading(false);
+      return;
+    }
 
-        const data = await fetchEvents(token, page, limit, { ...filters, published: filters.published === 'true' ? true : (filters.published === 'false' ? false : undefined) });
+    // Basic authorization check: only manager or higher can access
+    const roles = ['regular', 'cashier', 'manager', 'superuser'];
+    const currentUserRoleIndex = roles.indexOf(user.role);
+    const requiredRoleIndex = roles.indexOf('manager');
+
+    if (currentUserRoleIndex < requiredRoleIndex) {
+      setError("You do not have permission to access this page.");
+      setLoading(false);
+      return;
+    }
+
+    const getEvents = async () => {
+      try {
+        setLoading(true);
+        const data = await fetchEvents(token, page, limit, { ...debouncedFilters, published: debouncedFilters.published === 'true' ? true : (debouncedFilters.published === 'false' ? false : undefined) }); // Use debounced filters
         setEvents(data.results);
         setTotalCount(data.count);
       } catch (err) {
         setError(err.message || 'Failed to fetch events');
-        localStorage.removeItem('token');
-        localStorage.removeItem('tokenExpiresAt');
-        navigate('/login');
       } finally {
         setLoading(false);
-        setLoadingUserRole(false);
       }
     };
 
-    checkUserRoleAndFetchEvents();
-  }, [navigate, page, limit, filters]);
+    getEvents();
+  }, [token, user, navigate, page, limit, debouncedFilters]); // Depend on debounced filters
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedFilters]);
 
   const totalPages = Math.ceil(totalCount / limit);
 
@@ -54,30 +69,9 @@ function ManageEventsPage() {
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    setFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
-    setPage(1); // Reset to first page on filter change
+    setLocalFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
+    // setPage(1) is now handled by a separate useEffect when debouncedFilters change
   };
-
-  if (loadingUserRole) {
-    return <div className="container mt-5">Loading user permissions...</div>;
-  }
-
-  // Basic authorization check: only manager or higher can access
-  const roles = ['regular', 'cashier', 'manager', 'superuser'];
-  const currentUserRoleIndex = roles.indexOf(currentUserRole);
-  const requiredRoleIndex = roles.indexOf('manager');
-
-  if (currentUserRoleIndex < requiredRoleIndex) {
-    return (
-      <div className="container mt-5 alert alert-danger">
-        You do not have permission to access this page.
-      </div>
-    );
-  }
-
-  if (loading) {
-    return <div className="container mt-5">Loading events...</div>;
-  }
 
   if (error) {
     return <div className="container mt-5 alert alert-danger">{error}</div>;
@@ -98,7 +92,7 @@ function ManageEventsPage() {
                 className="form-control"
                 id="nameFilter"
                 name="name"
-                value={filters.name}
+                value={localFilters.name}
                 onChange={handleFilterChange}
               />
             </div>
@@ -109,7 +103,7 @@ function ManageEventsPage() {
                 className="form-control"
                 id="locationFilter"
                 name="location"
-                value={filters.location}
+                value={localFilters.location}
                 onChange={handleFilterChange}
               />
             </div>
@@ -119,7 +113,7 @@ function ManageEventsPage() {
                 id="publishedFilter"
                 name="published"
                 className="form-select"
-                value={filters.published}
+                value={localFilters.published}
                 onChange={handleFilterChange}
               >
                 <option value="">All</option>
@@ -132,7 +126,14 @@ function ManageEventsPage() {
         </div>
       </div>
 
-      {events.length === 0 ? (
+      {loading ? (
+        <div className="text-center mt-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p>Loading events...</p>
+        </div>
+      ) : events.length === 0 ? (
         <div className="alert alert-info text-center">No events found.</div>
       ) : (
         <>

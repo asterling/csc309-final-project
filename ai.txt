@@ -24,3 +24,25 @@ Summary of work completed:
         *   A large number of randomized transactions, including 10-20 suspicious transactions created by the `suspicious_cashier`.
     *   Added `npm run seed` command to `backend/package.json`.
     *   Fixed API usage and missing field errors in `seed.js`.
+
+Nov 10 04:30pm:
+Summary of latest changes:
+
+1.  **Fixed "Invalid Date" Error:**
+    *   Identified missing `createdAt` field in `Transaction` model in `backend/prisma/schema.prisma`.
+    *   Added `createdAt DateTime @default(now())` to the `Transaction` model.
+    *   Instructed user to run Prisma migration (`npx prisma migrate dev`) and reseed the database.
+
+2.  **Enhanced `manage.sh` Script:**
+    *   Added `restart` command: Stops and starts both frontend and backend servers.
+    *   Added `reseed` command: Stops servers, runs `npm run seed` in backend, then starts servers.
+    *   Added `install` command: Installs backend/frontend dependencies, applies Prisma migrations, and runs seed script.
+
+3.  **Fixed Navbar Dropdown Functionality:**
+    *   Ensured Bootstrap JavaScript is loaded by adding `import 'bootstrap/dist/js/bootstrap.bundle.min.js';` to `frontend/src/index.js`.
+
+4.  **Refined Navbar Role-Based Display:**
+    *   Restructured `frontend/src/components/Navbar.js` to explicitly divide menu options into "Cashier Tasks" and "Admin" dropdowns, based on user roles, for clearer navigation.
+
+5.  **Fixed Navbar Menu Display Delay:**
+    *   Corrected `frontend/src/context/AuthContext.js` by updating the `useEffect` dependency array to `[token]`. This ensures user data (including roles) is re-fetched immediately after a new login, resolving the delay in privileged menus appearing.

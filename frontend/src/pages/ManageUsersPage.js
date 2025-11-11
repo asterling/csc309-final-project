@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { fetchAllUsers, fetchUserProfile } from '../api';
+import { fetchAllUsers } from '../api';
+import { AuthContext } from '../context/AuthContext';
+import useDebounce from '../hooks/useDebounce'; // Import the debounce hook
 
 function ManageUsersPage() {
   const [users, setUsers] = useState([]);
@@ -9,38 +11,51 @@ function ManageUsersPage() {
   const [page, setPage] = useState(1);
   const [limit] = useState(10); // Items per page
   const [totalCount, setTotalCount] = useState(0);
-  const [filters, setFilters] = useState({ name: '', role: '', verified: '', activated: '' });
-  const [currentUserRole, setCurrentUserRole] = useState(null);
-  const [loadingUserRole, setLoadingUserRole] = useState(true);
+  // Use a local state for immediate input updates
+  const [localFilters, setLocalFilters] = useState({ name: '', role: '', verified: '', activated: '' });
+  // Debounce the filters for API calls
+  const debouncedFilters = useDebounce(localFilters, 500); // 500ms debounce delay
+
+  const { token, user } = useContext(AuthContext);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const checkUserRoleAndFetchUsers = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/login');
-        return;
-      }
-      try {
-        const user = await fetchUserProfile(token);
-        setCurrentUserRole(user.role);
+    if (!token || !user) {
+      setLoading(false);
+      return;
+    }
 
-        const data = await fetchAllUsers(token, page, limit, filters);
+    // Basic authorization check: only manager or higher can access
+    const roles = ['regular', 'cashier', 'manager', 'superuser'];
+    const currentUserRoleIndex = roles.indexOf(user.role);
+    const requiredRoleIndex = roles.indexOf('manager');
+
+    if (currentUserRoleIndex < requiredRoleIndex) {
+      setError("You do not have permission to access this page.");
+      setLoading(false);
+      return;
+    }
+
+    const getUsers = async () => {
+      try {
+        setLoading(true);
+        const data = await fetchAllUsers(token, page, limit, debouncedFilters); // Use debounced filters
         setUsers(data.results);
         setTotalCount(data.count);
       } catch (err) {
         setError(err.message || 'Failed to fetch users');
-        localStorage.removeItem('token');
-        localStorage.removeItem('tokenExpiresAt');
-        navigate('/login');
       } finally {
         setLoading(false);
-        setLoadingUserRole(false);
       }
     };
 
-    checkUserRoleAndFetchUsers();
-  }, [navigate, page, limit, filters]);
+    getUsers();
+  }, [token, user, navigate, page, limit, debouncedFilters]); // Depend on debounced filters
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedFilters]);
 
   const totalPages = Math.ceil(totalCount / limit);
 
@@ -54,30 +69,9 @@ function ManageUsersPage() {
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    setFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
-    setPage(1); // Reset to first page on filter change
+    setLocalFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
+    // setPage(1) is now handled by a separate useEffect when debouncedFilters change
   };
-
-  if (loadingUserRole) {
-    return <div className="container mt-5">Loading user permissions...</div>;
-  }
-
-  // Basic authorization check: only manager or higher can access
-  const roles = ['regular', 'cashier', 'manager', 'superuser'];
-  const currentUserRoleIndex = roles.indexOf(currentUserRole);
-  const requiredRoleIndex = roles.indexOf('manager');
-
-  if (currentUserRoleIndex < requiredRoleIndex) {
-    return (
-      <div className="container mt-5 alert alert-danger">
-        You do not have permission to access this page.
-      </div>
-    );
-  }
-
-  if (loading) {
-    return <div className="container mt-5">Loading users...</div>;
-  }
 
   if (error) {
     return <div className="container mt-5 alert alert-danger">{error}</div>;
@@ -98,7 +92,7 @@ function ManageUsersPage() {
                 className="form-control"
                 id="nameFilter"
                 name="name"
-                value={filters.name}
+                value={localFilters.name}
                 onChange={handleFilterChange}
               />
             </div>
@@ -108,7 +102,7 @@ function ManageUsersPage() {
                 id="roleFilter"
                 name="role"
                 className="form-select"
-                value={filters.role}
+                value={localFilters.role}
                 onChange={handleFilterChange}
               >
                 <option value="">All</option>
@@ -124,7 +118,7 @@ function ManageUsersPage() {
                 id="verifiedFilter"
                 name="verified"
                 className="form-select"
-                value={filters.verified} 
+                value={localFilters.verified}
                 onChange={handleFilterChange}
               >
                 <option value="">All</option>
@@ -138,7 +132,7 @@ function ManageUsersPage() {
                 id="activatedFilter"
                 name="activated"
                 className="form-select"
-                value={filters.activated}
+                value={localFilters.activated}
                 onChange={handleFilterChange}
               >
                 <option value="">All</option>
@@ -150,7 +144,14 @@ function ManageUsersPage() {
         </div>
       </div>
 
-      {users.length === 0 ? (
+      {loading ? (
+        <div className="text-center mt-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p>Loading users...</p>
+        </div>
+      ) : users.length === 0 ? (
         <div className="alert alert-info text-center">No users found.</div>
       ) : (
         <>

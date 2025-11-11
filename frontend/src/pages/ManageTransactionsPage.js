@@ -2,6 +2,7 @@ import React, { useEffect, useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { fetchAllTransactions } from '../api';
 import { AuthContext } from '../context/AuthContext';
+import useDebounce from '../hooks/useDebounce'; // Import the debounce hook
 
 function ManageTransactionsPage() {
   const [transactions, setTransactions] = useState([]);
@@ -10,7 +11,11 @@ function ManageTransactionsPage() {
   const [page, setPage] = useState(1);
   const [limit] = useState(10); // Items per page
   const [totalCount, setTotalCount] = useState(0);
-  const [filters, setFilters] = useState({ name: '', createdBy: '', suspicious: '', promotionId: '', type: '', relatedId: '', amount: '', operator: '' });
+  // Use a local state for immediate input updates
+  const [localFilters, setLocalFilters] = useState({ name: '', createdBy: '', suspicious: '', promotionId: '', type: '', relatedId: '', amount: '', operator: '' });
+  // Debounce the filters for API calls
+  const debouncedFilters = useDebounce(localFilters, 500); // 500ms debounce delay
+
   const { token, user } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -34,7 +39,7 @@ function ManageTransactionsPage() {
     const fetchTransactions = async () => {
       try {
         setLoading(true);
-        const data = await fetchAllTransactions(token, page, limit, filters);
+        const data = await fetchAllTransactions(token, page, limit, debouncedFilters); // Use debounced filters
         setTransactions(data.results);
         setTotalCount(data.count);
       } catch (err) {
@@ -45,7 +50,12 @@ function ManageTransactionsPage() {
     };
 
     fetchTransactions();
-  }, [token, user, navigate, page, limit, filters]);
+  }, [token, user, navigate, page, limit, debouncedFilters]); // Depend on debounced filters
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedFilters]);
 
   const totalPages = Math.ceil(totalCount / limit);
 
@@ -59,8 +69,8 @@ function ManageTransactionsPage() {
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    setFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
-    setPage(1); // Reset to first page on filter change
+    setLocalFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
+    // setPage(1) is now handled by a separate useEffect when debouncedFilters change
   };
 
   const getTransactionCardClass = (type) => {
@@ -77,10 +87,6 @@ function ManageTransactionsPage() {
         return '';
     }
   };
-
-  if (loading) {
-    return <div className="container mt-5">Loading transactions...</div>;
-  }
 
   if (error) {
     return <div className="container mt-5 alert alert-danger">{error}</div>;
@@ -101,7 +107,7 @@ function ManageTransactionsPage() {
                 className="form-control"
                 id="nameFilter"
                 name="name"
-                value={filters.name}
+                value={localFilters.name}
                 onChange={handleFilterChange}
               />
             </div>
@@ -111,7 +117,7 @@ function ManageTransactionsPage() {
                 id="typeFilter"
                 name="type"
                 className="form-select"
-                value={filters.type}
+                value={localFilters.type}
                 onChange={handleFilterChange}
               >
                 <option value="">All</option>
@@ -127,7 +133,7 @@ function ManageTransactionsPage() {
                 id="suspiciousFilter"
                 name="suspicious"
                 className="form-select"
-                value={filters.suspicious}
+                value={localFilters.suspicious}
                 onChange={handleFilterChange}
               >
                 <option value="">All</option>
@@ -142,7 +148,7 @@ function ManageTransactionsPage() {
                 className="form-control"
                 id="createdByFilter"
                 name="createdBy"
-                value={filters.createdBy}
+                value={localFilters.createdBy}
                 onChange={handleFilterChange}
               />
             </div>
@@ -151,7 +157,14 @@ function ManageTransactionsPage() {
         </div>
       </div>
 
-      {transactions.length === 0 ? (
+      {loading ? (
+        <div className="text-center mt-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p>Loading transactions...</p>
+        </div>
+      ) : transactions.length === 0 ? (
         <div className="alert alert-info text-center">No transactions found.</div>
       ) : (
         <>
@@ -177,7 +190,7 @@ function ManageTransactionsPage() {
                     <td>{transaction.utorid}</td>
                     <td className="text-capitalize">{transaction.type}</td>
                     <td>
-                      {transaction.type === 'purchase' && `$${transaction.spent}`}
+                      {transaction.type === 'purchase' && `${transaction.spent}`}
                       {transaction.type === 'adjustment' && `${transaction.amount} pts`}
                       {transaction.type === 'transfer' && `${transaction.amount} pts`}
                       {transaction.type === 'redemption' && `${transaction.redeemed} pts`}
@@ -208,7 +221,7 @@ function ManageTransactionsPage() {
                 </li>
               ))}
               <li className={`page-item ${page === totalPages ? 'disabled' : ''}`}>
-                <button className className="page-link" onClick={handleNextPage}>Next</button>
+                <button className="page-link" onClick={handleNextPage}>Next</button>
               </li>
             </ul>
           </nav>

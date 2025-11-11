@@ -2,6 +2,7 @@ import React, { useEffect, useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { fetchPromotions } from '../api';
 import { AuthContext } from '../context/AuthContext';
+import useDebounce from '../hooks/useDebounce'; // Import the debounce hook
 
 function ManagePromotionsPage() {
   const [promotions, setPromotions] = useState([]);
@@ -10,7 +11,11 @@ function ManagePromotionsPage() {
   const [page, setPage] = useState(1);
   const [limit] = useState(10); // Items per page
   const [totalCount, setTotalCount] = useState(0);
-  const [filters, setFilters] = useState({ name: '', type: '' }); // Example filters
+  // Use a local state for immediate input updates
+  const [localFilters, setLocalFilters] = useState({ name: '', type: '' });
+  // Debounce the filters for API calls
+  const debouncedFilters = useDebounce(localFilters, 500); // 500ms debounce delay
+
   const { token, user } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -35,7 +40,7 @@ function ManagePromotionsPage() {
         setLoading(true);
         // The fetchPromotions API currently doesn't support pagination or filters directly
         // It returns all promotions. For a real implementation, this would need to be updated.
-        const data = await fetchPromotions(token); // Assuming fetchPromotions returns { count, results }
+        const data = await fetchPromotions(token, page, limit, debouncedFilters); // Use debounced filters
         setPromotions(data.results); // Correctly set the results array
         setTotalCount(data.count); // Correctly set the total count
       } catch (err) {
@@ -46,7 +51,12 @@ function ManagePromotionsPage() {
     };
 
     getPromotions();
-  }, [token, user, navigate, page, limit, filters]); // Re-run effect on page/filter change
+  }, [token, user, navigate, page, limit, debouncedFilters]); // Re-run effect on page/filter change
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedFilters]);
 
   const totalPages = Math.ceil(totalCount / limit);
 
@@ -60,13 +70,9 @@ function ManagePromotionsPage() {
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    setFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
-    setPage(1); // Reset to first page on filter change
+    setLocalFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
+    // setPage(1) is now handled by a separate useEffect when debouncedFilters change
   };
-
-  if (loading) {
-    return <div className="container mt-5">Loading promotions...</div>;
-  }
 
   if (error) {
     return <div className="container mt-5 alert alert-danger">{error}</div>;
@@ -87,7 +93,7 @@ function ManagePromotionsPage() {
                 className="form-control"
                 id="nameFilter"
                 name="name"
-                value={filters.name}
+                value={localFilters.name}
                 onChange={handleFilterChange}
               />
             </div>
@@ -97,7 +103,7 @@ function ManagePromotionsPage() {
                 id="typeFilter"
                 name="type"
                 className="form-select"
-                value={filters.type}
+                value={localFilters.type}
                 onChange={handleFilterChange}
               >
                 <option value="">All</option>
@@ -111,7 +117,14 @@ function ManagePromotionsPage() {
         </div>
       </div>
 
-      {promotions.length === 0 ? (
+      {loading ? (
+        <div className="text-center mt-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p>Loading promotions...</p>
+        </div>
+      ) : promotions.length === 0 ? (
         <div className="alert alert-info text-center">No promotions found.</div>
       ) : (
         <>

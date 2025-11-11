@@ -31,10 +31,6 @@ function PromotionsPage() {
     getPromotions();
   }, [token, navigate]);
 
-  if (loading) {
-    return <div className="container mt-5">Loading promotions...</div>;
-  }
-
   if (error) {
     return <div className="container mt-5 alert alert-danger">{error}</div>;
   }
@@ -42,7 +38,14 @@ function PromotionsPage() {
   return (
     <div className="container mt-5">
       <h1 className="mb-4 text-center">Available Promotions</h1>
-      {promotions.length === 0 ? (
+      {loading ? (
+        <div className="text-center mt-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p>Loading promotions...</p>
+        </div>
+      ) : promotions.length === 0 ? (
         <div className="alert alert-info text-center">No promotions available at the moment.</div>
       ) : (
         <div className="row">

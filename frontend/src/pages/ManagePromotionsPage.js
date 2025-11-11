@@ -128,8 +128,8 @@ function ManagePromotionsPage() {
         <div className="alert alert-info text-center">No promotions found.</div>
       ) : (
         <>
-          <div className="table-responsive">
-            <table className="table table-striped table-hover">
+          <div>
+            <table className="table table-striped table-hover table-no-scroll">
               <thead>
                 <tr>
                   <th>ID</th>
@@ -150,7 +150,7 @@ function ManagePromotionsPage() {
                     <td>{promo.name}</td>
                     <td>{promo.type}</td>
                     <td>{promo.minSpending || 'N/A'}</td>
-                    <td>{promo.rate ? `${promo.rate * 100}%` : 'N/A'}</td>
+                    <td>{promo.rate ? `${(promo.rate * 100).toFixed(2)}%` : 'N/A'}</td>
                     <td>{promo.points || 'N/A'}</td>
                     <td>{new Date(promo.startTime).toLocaleString()}</td>
                     <td>{new Date(promo.endTime).toLocaleString()}</td>

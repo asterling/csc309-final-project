@@ -137,8 +137,8 @@ function ManageEventsPage() {
         <div className="alert alert-info text-center">No events found.</div>
       ) : (
         <>
-          <div className="table-responsive">
-            <table className="table table-striped table-hover">
+          <div>
+            <table className="table table-striped table-hover table-no-scroll">
               <thead>
                 <tr>
                   <th>ID</th>

@@ -18,3 +18,8 @@ code {
 .container {
   padding-top: 20px;
 }
+
+.table-no-scroll {
+  table-layout: fixed;
+  word-wrap: break-word;
+}

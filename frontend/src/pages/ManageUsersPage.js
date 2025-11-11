@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { fetchAllUsers } from '../api';
 import { AuthContext } from '../context/AuthContext';
@@ -6,11 +6,12 @@ import useDebounce from '../hooks/useDebounce'; // Import the debounce hook
 
 function ManageUsersPage() {
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [limit] = useState(10); // Items per page
   const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   // Use a local state for immediate input updates
   const [localFilters, setLocalFilters] = useState({ name: '', role: '', verified: '', activated: '' });
   // Debounce the filters for API calls
@@ -18,6 +19,18 @@ function ManageUsersPage() {
 
   const { token, user } = useContext(AuthContext);
   const navigate = useNavigate();
+
+  const observer = useRef();
+  const lastUserElementRef = useCallback(node => {
+    if (loading) return;
+    if (observer.current) observer.current.disconnect();
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore) {
+        setPage(prevPage => prevPage + 1);
+      }
+    });
+    if (node) observer.current.observe(node);
+  }, [loading, hasMore]);
 
   useEffect(() => {
     if (!token || !user) {
@@ -37,11 +50,15 @@ function ManageUsersPage() {
     }
 
     const getUsers = async () => {
+      setLoading(true);
+      setError('');
       try {
-        setLoading(true);
-        const data = await fetchAllUsers(token, page, limit, debouncedFilters); // Use debounced filters
-        setUsers(data.results);
+        const data = await fetchAllUsers(token, page, limit, debouncedFilters);
+        setUsers(prevUsers => {
+          return [...new Set([...prevUsers, ...data.results].map(u => u.id))].map(id => [...prevUsers, ...data.results].find(u => u.id === id));
+        });
         setTotalCount(data.count);
+        setHasMore(data.results.length > 0 && (users.length + data.results.length) < data.count);
       } catch (err) {
         setError(err.message || 'Failed to fetch users');
       } finally {
@@ -50,30 +67,21 @@ function ManageUsersPage() {
     };
 
     getUsers();
-  }, [token, user, navigate, page, limit, debouncedFilters]); // Depend on debounced filters
+  }, [token, user, navigate, page, limit, debouncedFilters]);
 
-  // Reset page to 1 when filters change
+  // Reset users and page when filters change
   useEffect(() => {
+    setUsers([]);
     setPage(1);
+    setHasMore(true);
   }, [debouncedFilters]);
-
-  const totalPages = Math.ceil(totalCount / limit);
-
-  const handlePreviousPage = () => {
-    setPage((prevPage) => Math.max(prevPage - 1, 1));
-  };
-
-  const handleNextPage = () => {
-    setPage((prevPage) => Math.min(prevPage + 1, totalPages));
-  };
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setLocalFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
-    // setPage(1) is now handled by a separate useEffect when debouncedFilters change
   };
 
-  if (error) {
+  if (error && users.length === 0) {
     return <div className="container mt-5 alert alert-danger">{error}</div>;
   }
 
@@ -144,14 +152,7 @@ function ManageUsersPage() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="text-center mt-5">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-          <p>Loading users...</p>
-        </div>
-      ) : users.length === 0 ? (
+      {users.length === 0 && !loading ? (
         <div className="alert alert-info text-center">No users found.</div>
       ) : (
         <>
@@ -171,39 +172,56 @@ function ManageUsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => (
-                  <tr key={user.id}>
-                    <td>{user.id}</td>
-                    <td>{user.utorid}</td>
-                    <td>{user.name}</td>
-                    <td>{user.email}</td>
-                    <td>{user.role}</td>
-                    <td>{user.verified ? 'Yes' : 'No'}</td>
-                    <td>{user.suspicious ? 'Yes' : 'No'}</td>
-                    <td>{user.points}</td>
-                    <td>
-                      <Link to={`/manage-users/${user.id}`} className="btn btn-sm btn-info">Edit</Link>
-                    </td>
-                  </tr>
-                ))}
+                {users.map((user, index) => {
+                  if (users.length === index + 1) {
+                    return (
+                      <tr ref={lastUserElementRef} key={user.id}>
+                        <td>{user.id}</td>
+                        <td>{user.utorid}</td>
+                        <td>{user.name}</td>
+                        <td>{user.email}</td>
+                        <td>{user.role}</td>
+                        <td>{user.verified ? 'Yes' : 'No'}</td>
+                        <td>{user.suspicious ? 'Yes' : 'No'}</td>
+                        <td>{user.points}</td>
+                        <td>
+                          <Link to={`/manage-users/${user.id}`} className="btn btn-sm btn-info">Edit</Link>
+                        </td>
+                      </tr>
+                    );
+                  } else {
+                    return (
+                      <tr key={user.id}>
+                        <td>{user.id}</td>
+                        <td>{user.utorid}</td>
+                        <td>{user.name}</td>
+                        <td>{user.email}</td>
+                        <td>{user.role}</td>
+                        <td>{user.verified ? 'Yes' : 'No'}</td>
+                        <td>{user.suspicious ? 'Yes' : 'No'}</td>
+                        <td>{user.points}</td>
+                        <td>
+                          <Link to={`/manage-users/${user.id}`} className="btn btn-sm btn-info">Edit</Link>
+                        </td>
+                      </tr>
+                    );
+                  }
+                })}
               </tbody>
             </table>
           </div>
-          <nav aria-label="Page navigation" className="mt-4">
-            <ul className="pagination justify-content-center">
-              <li className={`page-item ${page === 1 ? 'disabled' : ''}`}>
-                <button className="page-link" onClick={handlePreviousPage}>Previous</button>
-              </li>
-              {Array.from({ length: totalPages }, (_, i) => (
-                <li key={i + 1} className={`page-item ${page === i + 1 ? 'active' : ''}`}>
-                  <button className="page-link" onClick={() => setPage(i + 1)}>{i + 1}</button>
-                </li>
-              ))}
-              <li className={`page-item ${page === totalPages ? 'disabled' : ''}`}>
-                <button className="page-link" onClick={handleNextPage}>Next</button>
-              </li>
-            </ul>
-          </nav>
+          {loading && (
+            <div className="text-center mt-3">
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+            </div>
+          )}
+          {!hasMore && users.length > 0 && (
+            <div className="text-center mt-3">
+              <p>No more users to load.</p>
+            </div>
+          )}
         </>
       )}
     </div>

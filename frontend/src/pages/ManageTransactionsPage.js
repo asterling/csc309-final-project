@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { fetchAllTransactions } from '../api';
 import { AuthContext } from '../context/AuthContext';
@@ -6,11 +6,12 @@ import useDebounce from '../hooks/useDebounce'; // Import the debounce hook
 
 function ManageTransactionsPage() {
   const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [limit] = useState(10); // Items per page
   const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   // Use a local state for immediate input updates
   const [localFilters, setLocalFilters] = useState({ name: '', createdBy: '', suspicious: '', promotionId: '', type: '', relatedId: '', amount: '', operator: '' });
   // Debounce the filters for API calls
@@ -18,6 +19,18 @@ function ManageTransactionsPage() {
 
   const { token, user } = useContext(AuthContext);
   const navigate = useNavigate();
+
+  const observer = useRef();
+  const lastTransactionElementRef = useCallback(node => {
+    if (loading) return;
+    if (observer.current) observer.current.disconnect();
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore) {
+        setPage(prevPage => prevPage + 1);
+      }
+    });
+    if (node) observer.current.observe(node);
+  }, [loading, hasMore]);
 
   useEffect(() => {
     if (!token || !user) {
@@ -37,11 +50,15 @@ function ManageTransactionsPage() {
     }
 
     const fetchTransactions = async () => {
+      setLoading(true);
+      setError('');
       try {
-        setLoading(true);
-        const data = await fetchAllTransactions(token, page, limit, debouncedFilters); // Use debounced filters
-        setTransactions(data.results);
+        const data = await fetchAllTransactions(token, page, limit, debouncedFilters);
+        setTransactions(prevTransactions => {
+          return [...new Set([...prevTransactions, ...data.results].map(t => t.id))].map(id => [...prevTransactions, ...data.results].find(t => t.id === id));
+        });
         setTotalCount(data.count);
+        setHasMore(data.results.length > 0 && (transactions.length + data.results.length) < data.count);
       } catch (err) {
         setError(err.message || 'Failed to fetch transactions');
       } finally {
@@ -50,45 +67,21 @@ function ManageTransactionsPage() {
     };
 
     fetchTransactions();
-  }, [token, user, navigate, page, limit, debouncedFilters]); // Depend on debounced filters
+  }, [token, user, navigate, page, limit, debouncedFilters]);
 
-  // Reset page to 1 when filters change
+  // Reset transactions and page when filters change
   useEffect(() => {
+    setTransactions([]);
     setPage(1);
+    setHasMore(true);
   }, [debouncedFilters]);
-
-  const totalPages = Math.ceil(totalCount / limit);
-
-  const handlePreviousPage = () => {
-    setPage((prevPage) => Math.max(prevPage - 1, 1));
-  };
-
-  const handleNextPage = () => {
-    setPage((prevPage) => Math.min(prevPage + 1, totalPages));
-  };
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setLocalFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
-    // setPage(1) is now handled by a separate useEffect when debouncedFilters change
   };
 
-  const getTransactionCardClass = (type) => {
-    switch (type) {
-      case 'purchase':
-        return 'border-primary';
-      case 'adjustment':
-        return 'border-info';
-      case 'transfer':
-        return 'border-success';
-      case 'redemption':
-        return 'border-warning';
-      default:
-        return '';
-    }
-  };
-
-  if (error) {
+  if (error && transactions.length === 0) {
     return <div className="container mt-5 alert alert-danger">{error}</div>;
   }
 
@@ -157,14 +150,7 @@ function ManageTransactionsPage() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="text-center mt-5">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-          <p>Loading transactions...</p>
-        </div>
-      ) : transactions.length === 0 ? (
+      {transactions.length === 0 && !loading ? (
         <div className="alert alert-info text-center">No transactions found.</div>
       ) : (
         <>
@@ -184,47 +170,72 @@ function ManageTransactionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {transactions.map((transaction) => (
-                  <tr key={transaction.id}>
-                    <td>{transaction.id}</td>
-                    <td>{transaction.utorid}</td>
-                    <td className="text-capitalize">{transaction.type}</td>
-                    <td>
-                      {transaction.type === 'purchase' && `${transaction.spent}`}
-                      {transaction.type === 'adjustment' && `${transaction.amount} pts`}
-                      {transaction.type === 'transfer' && `${transaction.amount} pts`}
-                      {transaction.type === 'redemption' && `${transaction.redeemed} pts`}
-                    </td>
-                    <td>
-                      {transaction.type === 'purchase' && `${transaction.earned} pts`}
-                      {transaction.type === 'redemption' && `${transaction.redeemed} pts`}
-                    </td>
-                    <td>{transaction.createdBy}</td>
-                    <td>{transaction.suspicious ? 'Yes' : 'No'}</td>
-                    <td>{new Date(transaction.createdAt).toLocaleString()}</td>
-                    <td>
-                      <Link to={`/manage-transactions/${transaction.id}`} className="btn btn-sm btn-info">View/Edit</Link>
-                    </td>
-                  </tr>
-                ))}
+                {transactions.map((transaction, index) => {
+                  if (transactions.length === index + 1) {
+                    return (
+                      <tr ref={lastTransactionElementRef} key={transaction.id}>
+                        <td>{transaction.id}</td>
+                        <td>{transaction.utorid}</td>
+                        <td className="text-capitalize">{transaction.type}</td>
+                        <td>
+                          {transaction.type === 'purchase' && `${transaction.spent}`}
+                          {transaction.type === 'adjustment' && `${transaction.amount} pts`}
+                          {transaction.type === 'transfer' && `${transaction.amount} pts`}
+                          {transaction.type === 'redemption' && `${transaction.redeemed} pts`}
+                        </td>
+                        <td>
+                          {transaction.type === 'purchase' && `${transaction.earned} pts`}
+                          {transaction.type === 'redemption' && `${transaction.redeemed} pts`}
+                        </td>
+                        <td>{transaction.createdBy}</td>
+                        <td>{transaction.suspicious ? 'Yes' : 'No'}</td>
+                        <td>{new Date(transaction.createdAt).toLocaleString()}</td>
+                        <td>
+                          <Link to={`/manage-transactions/${transaction.id}`} className="btn btn-sm btn-info">View/Edit</Link>
+                        </td>
+                      </tr>
+                    );
+                  } else {
+                    return (
+                      <tr key={transaction.id}>
+                        <td>{transaction.id}</td>
+                        <td>{transaction.utorid}</td>
+                        <td className="text-capitalize">{transaction.type}</td>
+                        <td>
+                          {transaction.type === 'purchase' && `${transaction.spent}`}
+                          {transaction.type === 'adjustment' && `${transaction.amount} pts`}
+                          {transaction.type === 'transfer' && `${transaction.amount} pts`}
+                          {transaction.type === 'redemption' && `${transaction.redeemed} pts`}
+                        </td>
+                        <td>
+                          {transaction.type === 'purchase' && `${transaction.earned} pts`}
+                          {transaction.type === 'redemption' && `${transaction.redeemed} pts`}
+                        </td>
+                        <td>{transaction.createdBy}</td>
+                        <td>{transaction.suspicious ? 'Yes' : 'No'}</td>
+                        <td>{new Date(transaction.createdAt).toLocaleString()}</td>
+                        <td>
+                          <Link to={`/manage-transactions/${transaction.id}`} className="btn btn-sm btn-info">View/Edit</Link>
+                        </td>
+                      </tr>
+                    );
+                  }
+                })}
               </tbody>
             </table>
           </div>
-          <nav aria-label="Page navigation" className="mt-4">
-            <ul className="pagination justify-content-center">
-              <li className={`page-item ${page === 1 ? 'disabled' : ''}`}>
-                <button className="page-link" onClick={handlePreviousPage}>Previous</button>
-              </li>
-              {Array.from({ length: totalPages }, (_, i) => (
-                <li key={i + 1} className={`page-item ${page === i + 1 ? 'active' : ''}`}>
-                  <button className="page-link" onClick={() => setPage(i + 1)}>{i + 1}</button>
-                </li>
-              ))}
-              <li className={`page-item ${page === totalPages ? 'disabled' : ''}`}>
-                <button className="page-link" onClick={handleNextPage}>Next</button>
-              </li>
-            </ul>
-          </nav>
+          {loading && (
+            <div className="text-center mt-3">
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+            </div>
+          )}
+          {!hasMore && transactions.length > 0 && (
+            <div className="text-center mt-3">
+              <p>No more transactions to load.</p>
+            </div>
+          )}
         </>
       )}
     </div>

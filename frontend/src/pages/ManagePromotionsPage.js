@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { fetchPromotions } from '../api';
 import { AuthContext } from '../context/AuthContext';
@@ -6,11 +6,12 @@ import useDebounce from '../hooks/useDebounce'; // Import the debounce hook
 
 function ManagePromotionsPage() {
   const [promotions, setPromotions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [limit] = useState(10); // Items per page
   const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   // Use a local state for immediate input updates
   const [localFilters, setLocalFilters] = useState({ name: '', type: '' });
   // Debounce the filters for API calls
@@ -18,6 +19,18 @@ function ManagePromotionsPage() {
 
   const { token, user } = useContext(AuthContext);
   const navigate = useNavigate();
+
+  const observer = useRef();
+  const lastPromotionElementRef = useCallback(node => {
+    if (loading) return;
+    if (observer.current) observer.current.disconnect();
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore) {
+        setPage(prevPage => prevPage + 1);
+      }
+    });
+    if (node) observer.current.observe(node);
+  }, [loading, hasMore]);
 
   useEffect(() => {
     if (!token || !user) {
@@ -36,13 +49,15 @@ function ManagePromotionsPage() {
     }
 
     const getPromotions = async () => {
+      setLoading(true);
+      setError('');
       try {
-        setLoading(true);
-        // The fetchPromotions API currently doesn't support pagination or filters directly
-        // It returns all promotions. For a real implementation, this would need to be updated.
-        const data = await fetchPromotions(token, page, limit, debouncedFilters); // Use debounced filters
-        setPromotions(data.results); // Correctly set the results array
-        setTotalCount(data.count); // Correctly set the total count
+        const data = await fetchPromotions(token, page, limit, debouncedFilters);
+        setPromotions(prevPromotions => {
+          return [...new Set([...prevPromotions, ...data.results].map(p => p.id))].map(id => [...prevPromotions, ...data.results].find(p => p.id === id));
+        });
+        setTotalCount(data.count);
+        setHasMore(data.results.length > 0 && (promotions.length + data.results.length) < data.count);
       } catch (err) {
         setError(err.message || 'Failed to fetch promotions');
       } finally {
@@ -51,30 +66,21 @@ function ManagePromotionsPage() {
     };
 
     getPromotions();
-  }, [token, user, navigate, page, limit, debouncedFilters]); // Re-run effect on page/filter change
+  }, [token, user, navigate, page, limit, debouncedFilters]);
 
-  // Reset page to 1 when filters change
+  // Reset promotions and page when filters change
   useEffect(() => {
+    setPromotions([]);
     setPage(1);
+    setHasMore(true);
   }, [debouncedFilters]);
-
-  const totalPages = Math.ceil(totalCount / limit);
-
-  const handlePreviousPage = () => {
-    setPage((prevPage) => Math.max(prevPage - 1, 1));
-  };
-
-  const handleNextPage = () => {
-    setPage((prevPage) => Math.min(prevPage + 1, totalPages));
-  };
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setLocalFilters((prevFilters) => ({ ...prevFilters, [name]: value }));
-    // setPage(1) is now handled by a separate useEffect when debouncedFilters change
   };
 
-  if (error) {
+  if (error && promotions.length === 0) {
     return <div className="container mt-5 alert alert-danger">{error}</div>;
   }
 
@@ -117,14 +123,7 @@ function ManagePromotionsPage() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="text-center mt-5">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-          <p>Loading promotions...</p>
-        </div>
-      ) : promotions.length === 0 ? (
+      {promotions.length === 0 && !loading ? (
         <div className="alert alert-info text-center">No promotions found.</div>
       ) : (
         <>
@@ -144,39 +143,56 @@ function ManagePromotionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {promotions.map((promo) => (
-                  <tr key={promo.id}>
-                    <td>{promo.id}</td>
-                    <td>{promo.name}</td>
-                    <td>{promo.type}</td>
-                    <td>{promo.minSpending || 'N/A'}</td>
-                    <td>{promo.rate ? `${(promo.rate * 100).toFixed(2)}%` : 'N/A'}</td>
-                    <td>{promo.points || 'N/A'}</td>
-                    <td>{new Date(promo.startTime).toLocaleString()}</td>
-                    <td>{new Date(promo.endTime).toLocaleString()}</td>
-                    <td>
-                      <Link to={`/manage-promotions/${promo.id}`} className="btn btn-sm btn-info">Edit</Link>
-                    </td>
-                  </tr>
-                ))}
+                {promotions.map((promo, index) => {
+                  if (promotions.length === index + 1) {
+                    return (
+                      <tr ref={lastPromotionElementRef} key={promo.id}>
+                        <td>{promo.id}</td>
+                        <td>{promo.name}</td>
+                        <td>{promo.type}</td>
+                        <td>{promo.minSpending || 'N/A'}</td>
+                        <td>{promo.rate ? `${(promo.rate * 100).toFixed(2)}%` : 'N/A'}</td>
+                        <td>{promo.points || 'N/A'}</td>
+                        <td>{new Date(promo.startTime).toLocaleString()}</td>
+                        <td>{new Date(promo.endTime).toLocaleString()}</td>
+                        <td>
+                          <Link to={`/manage-promotions/${promo.id}`} className="btn btn-sm btn-info">Edit</Link>
+                        </td>
+                      </tr>
+                    );
+                  } else {
+                    return (
+                      <tr key={promo.id}>
+                        <td>{promo.id}</td>
+                        <td>{promo.name}</td>
+                        <td>{promo.type}</td>
+                        <td>{promo.minSpending || 'N/A'}</td>
+                        <td>{promo.rate ? `${(promo.rate * 100).toFixed(2)}%` : 'N/A'}</td>
+                        <td>{promo.points || 'N/A'}</td>
+                        <td>{new Date(promo.startTime).toLocaleString()}</td>
+                        <td>{new Date(promo.endTime).toLocaleString()}</td>
+                        <td>
+                          <Link to={`/manage-promotions/${promo.id}`} className="btn btn-sm btn-info">Edit</Link>
+                        </td>
+                      </tr>
+                    );
+                  }
+                })}
               </tbody>
             </table>
           </div>
-          <nav aria-label="Page navigation" className="mt-4">
-            <ul className="pagination justify-content-center">
-              <li className={`page-item ${page === 1 ? 'disabled' : ''}`}>
-                <button className="page-link" onClick={handlePreviousPage}>Previous</button>
-              </li>
-              {Array.from({ length: totalPages }, (_, i) => (
-                <li key={i + 1} className={`page-item ${page === i + 1 ? 'active' : ''}`}>
-                  <button className="page-link" onClick={() => setPage(i + 1)}>{i + 1}</button>
-                </li>
-              ))}
-              <li className={`page-item ${page === totalPages ? 'disabled' : ''}`}>
-                <button className="page-link" onClick={handleNextPage}>Next</button>
-              </li>
-            </ul>
-          </nav>
+          {loading && (
+            <div className="text-center mt-3">
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+            </div>
+          )}
+          {!hasMore && promotions.length > 0 && (
+            <div className="text-center mt-3">
+              <p>No more promotions to load.</p>
+            </div>
+          )}
         </>
       )}
     </div>

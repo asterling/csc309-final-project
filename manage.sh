@@ -79,6 +79,33 @@ reseed() {
     echo "Database reseeded and servers restarted."
 }
 
+install() {
+    echo "Running installation steps..."
+
+    echo "Installing backend dependencies..."
+    cd "$SCRIPT_DIR/backend"
+    npm install
+    if [ $? -ne 0 ]; then echo "Backend npm install failed."; exit 1; fi
+    cd "$SCRIPT_DIR"
+
+    echo "Installing frontend dependencies..."
+    cd "$SCRIPT_DIR/frontend"
+    npm install
+    if [ $? -ne 0 ]; then echo "Frontend npm install failed."; exit 1; fi
+    cd "$SCRIPT_DIR"
+
+    echo "Applying Prisma migrations and seeding database..."
+    cd "$SCRIPT_DIR/backend"
+    # This command will apply any pending migrations and generate the client
+    npx prisma migrate dev --name initial_setup
+    if [ $? -ne 0 ]; then echo "Prisma migrate failed."; exit 1; fi
+    npm run seed
+    if [ $? -ne 0 ]; then echo "Seed script failed."; exit 1; fi
+    cd "$SCRIPT_DIR"
+
+    echo "Installation complete. You can now run './manage.sh start'."
+}
+
 case "$1" in
     start)
         start
@@ -92,8 +119,11 @@ case "$1" in
     reseed)
         reseed
         ;;
+    install)
+        install
+        ;;
     *)
-        echo "Usage: $0 {start|stop|restart|reseed}"
+        echo "Usage: $0 {start|stop|restart|reseed|install}"
         exit 1
 esac
 

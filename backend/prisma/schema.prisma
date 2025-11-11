@@ -1,0 +1,76 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id          Int       @id @default(autoincrement())
+  utorid      String    @unique
+  name        String
+  email       String    @unique
+  password    String?
+  role        String    @default("regular")
+  verified    Boolean   @default(false)
+  suspicious  Boolean   @default(false)
+  points      Int       @default(0)
+  birthday    String?
+  avatarUrl   String?
+  createdAt   DateTime  @default(now())
+  lastLogin   DateTime?
+  resetToken  String?
+  expiresAt   DateTime?
+
+  transactions Transaction[]
+  eventsAsOrganizer Event[] @relation("EventOrganizers")
+  eventsAsGuest     Event[] @relation("EventGuests")
+}
+
+model Transaction {
+  id            Int      @id @default(autoincrement())
+  utorid        String
+  type          String
+  spent         Float?
+  earned        Int?
+  amount        Int?
+  remark        String?
+  promotionIds  String?
+  createdBy     String
+  relatedId     Int?
+  suspicious    Boolean  @default(false)
+  processedBy   String?
+  redeemed      Int?
+  user          User     @relation(fields: [utorid], references: [utorid])
+}
+
+model Event {
+  id            Int       @id @default(autoincrement())
+  name          String
+  description   String
+  location      String
+  startTime     DateTime
+  endTime       DateTime
+  capacity      Int?
+  points        Int
+  pointsRemain  Int
+  pointsAwarded Int
+  published     Boolean   @default(false)
+  organizers    User[]    @relation("EventOrganizers")
+  guests        User[]    @relation("EventGuests")
+  numGuests     Int       @default(0)
+}
+
+model Promotion {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String
+  type        String
+  startTime   DateTime
+  endTime     DateTime
+  minSpending Float?
+  rate        Float?
+  points      Int?
+}

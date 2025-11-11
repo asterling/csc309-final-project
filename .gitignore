@@ -1,0 +1,39 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm/
+.yarn/
+.pnpm/
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Prisma
+/backend/prisma/dev.db
+/backend/prisma/*.sqlite
+/backend/prisma/*.sqlite-journal
+
+# Frontend build output
+/frontend/build/
+
+# IDEs and other tools
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Runtime data
+*.pid
+backend.pid
+frontend.pid
+frontend-start.log

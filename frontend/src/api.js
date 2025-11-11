@@ -212,9 +212,15 @@ export async function requestRedemption(amount, remark, token) {
   }
 }
 
-export async function fetchPromotions(token) {
+export async function fetchPromotions(token, page = 1, limit = 10, filters = {}) {
   try {
-    const response = await fetch(`${API_BASE_URL}/promotions`, {
+    const queryParams = new URLSearchParams({
+      page: page,
+      limit: limit,
+      ...filters,
+    }).toString();
+
+    const response = await fetch(`${API_BASE_URL}/promotions?${queryParams}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
